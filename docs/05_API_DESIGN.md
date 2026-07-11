@@ -1,203 +1,601 @@
-# Autonomous AI Workflow Platform: Critical Analysis and Strategic Recommendation
-
-*Prepared July 2026*
-
-## How to read this
-
-You asked for facts, judgment, and speculation to be kept separate, so here is the approach. Statements about what a specific company has shipped, when, and what it costs are sourced and dated, mostly from vendor documentation or well corroborated coverage from the past few months. Statements about what you should build are my judgment as an architect and strategist, not settled fact, and I have tried to flag that plainly rather than write it in the same confident voice as the sourced material. Market size projections and moat durability are closer to speculation. Analyst firms disagree with each other by a factor of two or more on the basic size of this market, which tells you something about how early it still is.
-
-One thing needs to be said before anything else, because it changes how you should read everything that follows: nearly everything in your document, the goal to plan to execution loop, the eight agent pipeline, the tool list, describes a product category that has gone from an interesting idea to the default enterprise sales pitch in the eighteen months since agentic tools went mainstream. That is the single most important fact shaping this whole analysis, so it is stated here rather than saved as a twist for later.
-
----
-
 ## 1. Executive Summary
 
-Is the idea genuinely different? No, not at the level of the core pitch: describe a goal in plain English, the system plans and executes it across your tools. That pitch is now Zapier's flagship product line. It is native to n8n's 2.0 release. It is the entire premise of Lindy. It is the reason Manus reached a nine figure revenue run rate before its ownership got caught in a US-China dispute. And it is being built simultaneously into Microsoft Copilot Studio, Google's Gemini Enterprise Agent Platform, and OpenAI's stack, by companies with more distribution, more capital, and more integration coverage than a new entrant will have for years.
+This API is the contract between three consumers: the Next.js frontend, the Celery-based Execution Engine, and, in later versions, external systems integrating through webhooks or a public API. The design philosophy follows directly from the Vision and Technical Architecture documents: the API layer stays thin and synchronous, while everything stochastic (agent execution) runs asynchronously behind it.
 
-That is not a reason to abandon the project. It is a reason to stop treating "goal in, autonomous execution out" as your differentiator, because it stopped being one sometime in 2025, and to look for a real edge somewhere else: a vertical you understand better than a horizontal platform ever will, a reliability bar the incumbents have not cleared, or both.
+Three principles govern every endpoint in this document.
 
-There is a genuine opening buried in the competitive picture. Every platform named above is still struggling with the same thing: turning an impressive autonomous demo into something a business trusts to run unattended against its email, calendar, and CRM. Zapier's own 2026 survey of enterprise leaders found human-in-the-loop approval is still the most common way companies manage agents (38%), ahead of full autonomy. MIT's NANDA initiative found 95% of generative AI pilots show no measurable profit and loss impact. OpenAI shipped a no-code, visual agent workflow builder in October 2025 and announced it was winding it down eight months later, in June 2026, pointing developers back toward code-first tools and natural-language agents inside ChatGPT itself. That gap, between an autonomous demo and a system a business actually trusts, is where the real opportunity sits. It is not in being one more company that lets someone type a goal into a box.
+**The API describes outcomes, not workflow mechanics.** A client calls `POST /api/v1/campaigns` with a goal in natural language. It does not call separate endpoints to "add a research step" or "wire an agent to a tool." The Vision document's "zero scripting required" principle applies to the API surface as much as the UI: there is no endpoint that lets a client construct or rearrange the execution graph, because Version 1 has no dynamic graph to construct.
 
-My overall recommendation, stated early rather than saved for the end: build a small fraction of what is in your document, aimed at one narrow, well understood workflow, with a more conservative autonomy model than "ask for approval only when necessary." Treat the eight agent architecture, the learning engine, and the "automate any business outcome" framing as a two-year destination, not a version one target. The sections below explain why, in the order you asked for.
+**Every mutation that touches an AI-generated artifact is auditable and reversible up to the point of publishing.** Draft content can be edited or discarded freely. Once a `Publishing Job` has fired, the API records the action immutably rather than pretending it can be undone.
 
----
-
-## 2. Market Research
-
-### The category, as of mid-2026
-
-"Goal-directed autonomous agents that plan and execute across business tools" is no longer a frontier idea. It is table stakes across four groups of competitors, each with different strengths:
-
-- **Horizontal automation incumbents retrofitted with agents**: Zapier, n8n, Make. All three shipped native agent builders within the past year, each aimed at exactly the workflow you described in your first example ("generate a complete LinkedIn campaign for X").
-- **Agent-native startups**: Lindy, CrewAI, Manus, and dozens of smaller players (Relevance AI, Gumloop, Dust, Genspark, Kortix), most raising venture money on some version of your pitch.
-- **Hyperscaler platforms**: Microsoft (Copilot Studio, Agent 365), Google (Gemini Enterprise Agent Platform, formerly Vertex AI and Agentspace), and Amazon, all rebuilding their enterprise stacks around agent orchestration as the primary product, not an add-on.
-- **Model providers building their own agent layers**: OpenAI (AgentKit, ChatGPT agent, the Agents SDK) and Anthropic, both shipping orchestration and tool-use infrastructure directly, which narrows the gap between "framework" and "finished product" that a platform like yours would normally sit inside.
-
-Adoption is real, and it is a headline stat: Google's own 2026 AI Agent Trends research found 89% of business teams already use AI agents, running an average of 12 per organization. CrewAI's 2026 survey of 500 senior executives at $100M-plus revenue companies found 65% already use agents and 81% describe adoption as scaling or fully deployed.
-
-### The adoption number that matters more
-
-Adoption is not the same as trust, and the gap between the two is the central fact of this market right now. MIT's NANDA initiative found that 95% of generative AI pilots deliver no measurable profit and loss impact, with only around 5% reaching real scale. Separate 2026 surveys converge on a similar story for agents specifically: a March 2026 survey of 650 enterprise technology leaders found 78% have at least one agent pilot running, but only 14% have scaled an agent organization-wide. Multiple analyst firms (Forrester and Anaconda, IDC, RAND and CIO Research) independently put the pilot-to-production conversion rate somewhere between 12% and 22%, meaning 78% to 88% of agent pilots never cross into production use. Gartner expects 40% of agentic AI projects to be canceled by the end of 2027, citing escalating cost, unclear business value, and inadequate risk controls as the leading causes. In one 2026 survey, 70% of enterprise leaders named non-deterministic output, the model doing something different each time even on the same input, as the single biggest barrier to putting an agent into production.
-
-The most publicly visible cautionary tale is Klarna. In 2024 and 2025 the company pushed aggressively toward AI-driven customer service, and by mid-2025 was walking part of it back, rehiring human agents after satisfaction scores slipped. CEO Sebastian Siemiatkowski told Bloomberg the company had gone too far and focused too much on cost, at the expense of quality. Klarna's current public figures describe a hybrid model, with the AI agent handling the equivalent of roughly 853 employees' worth of work and about $60 million in annual benefit, while humans retain disputes, complex refunds, and hardship cases. The lesson is not that agents do not work. It is that the winning pattern in production is bounded autonomy on well scoped tasks with a real human escalation path, not "the AI decides when to ask for help," which is close to what your original architecture proposes.
-
-### Sizing (speculative, treat the range as the finding)
-
-Market research firms do not agree on how big this category is, and the spread is wide enough to be a data point in itself. MarketsandMarkets puts the AI orchestration market at $11.0 billion in 2025 growing to $30.2 billion by 2030 (22.3% CAGR). Grand View Research puts the broader AI agents market at $7.6 billion in 2025 rising to $182.9 billion by 2033 (49.6% CAGR from 2026). Deloitte estimates the autonomous agent market specifically at roughly $8.5 billion in 2026 and $35 billion by 2030. Mordor Intelligence's agentic AI figure is $9.9 billion for 2026 rising to $57.4 billion by 2031, and separately notes more than $40 billion in North American venture funding has already gone into agentic AI companies. Whichever number you trust, two things are consistent across all of them: growth rates in the 20% to 50% CAGR range, and enough capital already committed that you should assume every credible niche has at least one funded competitor by the time you ship.
+**Synchronous endpoints return fast, and long-running work is always a background job with a pollable or subscribable status.** No endpoint in this API blocks on an LLM call. `POST /api/v1/campaigns` returns in well under a second with a `202 Accepted` and a resource the client can poll or subscribe to; the actual research, strategy, and content generation happen in Celery workers exactly as described in the Technical Architecture document.
 
 ---
 
-## 3. Competitor Analysis
+## 2. API Architecture
 
-The table below compares the platforms most relevant to your plan. "Autonomy model" describes how each handles the tension between "let the AI act" and "keep a human in control," which is the single most consequential design decision in this whole category.
+The API is a thin layer inside the FastAPI modular monolith described in the Technical Architecture document. Requests pass through six logical layers, even though they live in one deployable service:
 
-| Platform | Category | Core pitch | Autonomy model | Scale / distribution | Pricing | Key limitation |
-|---|---|---|---|---|---|---|
-| **Zapier Agents** | Horizontal, retrofitted | Natural-language goal to autonomous teammate across 9,000+ apps | Guardrails scan for PII/prompt injection; human-in-the-loop is the most common enterprise pattern (38%) | 81 billion tasks run historically, ~15 years of integrations, largest app catalog in the category | Task/credit-based, roughly $20 to $69+/month self-serve, custom enterprise | Depth of reasoning on ambiguous, multi-day goals is weaker than agent-native tools; billing can penalize complex workflows |
-| **n8n 2.0** | Horizontal, open source | Visual canvas plus native LangChain agent nodes, 70+ AI nodes | Explicit "Human review" approval gates on sensitive tool calls, configurable per tool | Self-hostable, strong developer and technical-operator community, 400+ integrations | Free self-hosted; cloud from roughly $20 to $22/month | Steeper learning curve than Zapier for non-technical users; less turnkey for "describe a goal and go" |
-| **Make.com** | Horizontal, retrofitted | Conversational builder ("Maia") plus an agent builder | Still in beta as of early 2026 | 3,000+ apps, strong in Europe | Tiered subscription | Behind Zapier and n8n specifically on agent maturity as of this writing |
-| **CrewAI** | Agent-native framework and platform | "Crews" (autonomous multi-agent collaboration) plus "Flows" (deterministic, event-driven control), explicitly built to combine both | Hybrid by design: LLM reasoning inside Crews, code-level control in Flows, human-in-the-loop gates in the enterprise tier | 2 billion agent executions in the trailing 12 months, ~60% of the Fortune 500 reportedly using it, 100,000+ developers | Free / $25 per month Professional / custom Enterprise (roughly $60,000 to $120,000/year per third-party estimates) | Multi-agent coordination can run up to 4x the token cost of a single-agent approach per CrewAI's own benchmarks; real cost is dominated by underlying LLM spend, not the platform fee |
-| **Lindy** | Agent-native, no-code | "AI employees" for email, calendar, sales, support; repositioned in Feb 2026 as a personal executive assistant | Marketing emphasizes autonomy, but default behavior for consequential actions (e.g. sending email) is draft-and-approve unless explicitly reconfigured | ~$50M raised (a16z, Menlo, Battery, Coatue, Tiger Global); 400,000+ claimed users | Roughly $20 to $300/month depending on tier, plus metered voice minutes | Support quality has drawn public complaints; the autonomy the product name implies is narrower in practice than the pitch suggests |
-| **Manus** | Agent-native, general-purpose | Give it a goal, it plans and executes inside a cloud virtual computer (browser, terminal, code) | Full autonomy is the pitch; transparency via a visible execution trace is the main trust mechanism | Reached an estimated $100 to $125 million annual run rate by December 2025; Meta agreed to acquire for ~$2 to $3 billion, a deal China's regulator blocked in April 2026 | Free tier (300 daily credits) plus Pro from $20/month, Team from $20/seat | Fewer than 100 native API integrations as of early 2026 (relies more on fragile browser automation than direct APIs); reliability on long, branching multi-step plans remains the most consistently cited weakness across independent reviews |
-| **Microsoft Copilot Studio / Agent 365** | Hyperscaler suite | No-code and code-first agent building, now with general-availability multi-agent orchestration and Agent-to-Agent (A2A) protocol support | Explicit design goal stated by Microsoft: "combine deterministic orchestration with adaptive execution, structured where needed, adaptive where valuable" | Embedded across Microsoft 365 (Word, Excel, PowerPoint, Teams, Outlook), 1,400+ connectors, Anthropic's Claude models available alongside GPT models as of 2026 | Included in qualifying Microsoft 365 Copilot plans, pay-as-you-go available | Tied to the Microsoft ecosystem; governance and orchestration maturity are real, but the developer experience trails more agent-native tools |
-| **Google Gemini Enterprise Agent Platform** (formerly Vertex AI; absorbed Agentspace) | Hyperscaler suite | Full-stack agent build, run, govern, and optimize platform, rebranded and consolidated at Cloud Next 2026 | Agent Identity, Agent Gateway, and Agent Registry treated as first-class governance primitives, not afterthoughts | 200+ models including Claude in Model Garden, A2A protocol co-developed with Microsoft, $750 million partner fund | Usage-based (compute, storage, model tokens); free trial credits available | Very new as a consolidated product (April 2026); "Agentspace" as a named product effectively no longer exists, a useful reminder of how fast product names turn over in this category |
-| **OpenAI (AgentKit / ChatGPT agent / Agents SDK)** | Model provider building its own platform | AgentKit launched a no-code visual builder in October 2025; separately, ChatGPT agent merges "Operator" (browser control) and "deep research" into one system | Requests permission before consequential actions; user can interrupt or take over at any point | Codex (OpenAI's coding agent) alone passed 5 million weekly active users by June 2026 | Standard API pricing for AgentKit components; ChatGPT agent bundled into Plus/Pro/Team plans | On June 3, 2026, OpenAI announced it is deprecating the Agent Builder visual canvas and the Evals product, shutting both down November 30, 2026, and redirecting developers to the code-first Agents SDK or natural-language agents inside ChatGPT. Roughly eight months from launch to deprecation notice for the no-code layer specifically. |
-| **Anthropic MCP ecosystem** | Infrastructure, not a competing product | Open protocol standardizing how any agent connects to any tool | N/A, it is a connectivity layer | 97 million+ monthly SDK downloads, ~10,000+ active public servers, donated to the Linux Foundation's Agentic AI Foundation in December 2025 with AWS, Google, Microsoft, Salesforce, and Snowflake as backers | Free, open standard | Only about 12.9% of public MCP servers meet an independent "high trust" quality bar; 2026 has already seen real production incidents (a cross-tenant data leak, a path-traversal vulnerability exposing thousands of connected apps, tool-poisoning attacks) |
+```
+Client (Next.js)
+      |
+      v
+Presentation Layer   -- Next.js server/client components, React Query, Zustand
+      |  HTTPS / JSON, WebSocket for live workflow status
+      v
+REST Layer            -- FastAPI routers (api/v1/*), request/response schemas (Pydantic)
+      |
+      v
+Business Layer         -- Domain services (domain/services/*): input validation beyond
+      |                     schema shape, authorization checks, orchestration decisions
+      v
+Service Layer           -- Use-case functions: create_campaign(), approve_content(),
+      |                      resume_workflow(). One function per meaningful action, each
+      |                      independently testable and independent of the transport layer.
+      v
+Repository Layer         -- SQLAlchemy repositories, one per aggregate root (Campaign,
+      |                       WorkflowExecution, GeneratedContent, etc). No business logic here.
+      v
+Background Workers        -- Celery tasks, triggered by the Service Layer, never called
+                              directly by a router. Workers write results back through the
+                              same Repository Layer, keeping the database as the single
+                              source of truth for workflow state.
+```
 
-A few things worth pulling out of that table explicitly.
+Two rules keep this from turning into an accidental big ball of mud as the codebase grows:
 
-**The "describe a goal" pitch is not a moat anywhere in this list.** Every horizontal incumbent and every well-funded startup above uses nearly identical language to yours: goal in, autonomous plan and execution out. Zapier's own materials describe agents that "reason, decide which tools to use, take multiple actions, and adapt based on context," which is close to a word-for-word match for your product vision section.
-
-**The platforms winning enterprise trust are the ones treating autonomy as a dial, not a switch.** CrewAI's Crews-plus-Flows split, Microsoft's explicit "structured where needed, adaptive where valuable" framing, and Zapier's guardrails-and-approval-gates architecture are all converging on the same idea from different directions: let the model reason where reasoning adds value, and pin down everything else with deterministic code. Your original architecture, an unbroken chain from Goal Interpreter to Learning Engine with approval only "when necessary," does not yet reflect that lesson.
-
-**MCP has quietly solved (or at least commoditized) one of your hardest problems and created a new one.** Tool connectivity, historically the multi-year moat that let Zapier build a business on 9,000 integrations, is now substantially available to anyone through MCP servers. That is genuinely good news for a new entrant. The bad news: it also means your competitors get the same leverage, and the ecosystem's own quality data shows most public MCP servers are not production-grade yet, so "we support MCP" is necessary but not remotely sufficient as a claim.
+- **Routers never talk to the database or to Celery directly.** A router's only job is to validate the shape of a request, call exactly one Service Layer function, and translate the result into an HTTP response. This is what makes it possible to add a GraphQL or gRPC layer later (see Section 16) without touching business logic.
+- **Repositories never contain conditionals about business rules.** "Can this user approve this campaign" is a Business Layer question. "Fetch the campaign with this ID scoped to this organization" is a Repository Layer question. Mixing the two is the most common way this kind of codebase becomes hard to test.
 
 ---
 
-## 4. Architecture Review
+## 3. Authentication & Authorization
 
-### What is wrong with the proposed pipeline
+### Clerk authentication
 
-Your architecture is drawn as a straight line:
+All authentication is delegated to Clerk, matching the Technical Architecture document's security section. The frontend obtains a session JWT from Clerk after login (email/password, SSO, or social). Every API request carries this JWT in the `Authorization: Bearer <token>` header.
+
+### JWT validation
+
+A FastAPI dependency (`get_current_user`) runs on every non-public route:
+
+1. Verifies the JWT signature against Clerk's JWKS endpoint (cached, refreshed on a schedule, not on every request, to avoid adding latency to the hot path).
+2. Extracts `user_id` (Clerk's subject claim) and the `org_id` custom claim Clerk attaches when a user selects an active organization in the frontend.
+3. Loads the corresponding `Users` and `Organization_Users` rows, attaching `current_user` and `current_membership` to the request context.
+4. Rejects with `401 Unauthorized` if the signature is invalid, the token is expired, or no matching user exists. This is a distinct failure from `403 Forbidden`, which means the user is real but not allowed to do this specific thing.
+
+### Role-based access control
+
+Three roles, matching the Database Design document's `Roles` entity and the PRD's personas:
+
+| Role | Maps to persona | Can do |
+|---|---|---|
+| **Owner** | Agency Owner | Everything, including billing, inviting/removing users, deleting the organization |
+| **Editor** | Account Manager, Creative Strategist | Create campaigns, edit generated content, approve and publish, manage brand profiles and knowledge base |
+| **Viewer** | Any read-only stakeholder (e.g. a client given visibility) | Read campaigns, content, and analytics; cannot create, edit, approve, or publish |
+
+Role checks happen in the Business Layer, expressed as a decorator or dependency (`require_role("editor")`) rather than scattered `if` statements inside handlers, so the required role for an action is visible at the router definition.
+
+### Organization access and permission model
+
+Because a single user can belong to multiple organizations (the Database Design document's `Organization_Users` junction table exists specifically to support freelancers and fractional staff working across agencies), every request that touches organization-scoped data must resolve *which* organization it applies to. This API uses two mechanisms, and every route uses exactly one of them, never a mix:
+
+- **Header-scoped for reads and writes on nested resources**: `X-Organization-Id` header, required on all `/campaigns`, `/brands`, and related routes. The API rejects the request with `403 Forbidden` if the authenticated user has no `Organization_Users` row for that organization, and Postgres Row Level Security (per the Database Design document) provides a second, independent enforcement layer beneath the application check.
+- **Path-scoped for organization-level administration**: `/api/v1/organizations/{organization_id}/members`, where the ID in the path is itself the authorization boundary.
+
+This split exists because header-scoping keeps the vast majority of endpoint paths clean (`/campaigns/{id}` rather than `/organizations/{org_id}/campaigns/{id}`), while administrative actions benefit from having the organization explicit and visible in the URL for audit and caching purposes.
+
+---
+
+## 4. API Versioning Strategy
+
+All routes are prefixed `/api/v1/`. Version 1 is a whole-API version, not a per-resource version: there is no world in Version 1 where `/api/v1/campaigns` and `/api/v2/brands` coexist, because the surface area is small enough that splitting versioning per resource would add complexity without benefit at this stage.
+
+**Forward compatibility within v1**: additive, non-breaking changes (new optional fields, new endpoints, new enum values consumers are expected to handle gracefully) ship without a version bump. Clients are contractually expected to ignore unrecognized fields and unrecognized enum values rather than fail closed.
+
+**What forces a v2**: removing a field, changing a field's type or meaning, changing an endpoint's URL or HTTP method, or changing authentication semantics. Given the small initial user base, a v2 is more likely to be triggered by the transition to dynamic workflow graphs (Phase 2/3 of the Vision document) than by incremental Version 1 iteration.
+
+**Deprecation strategy**: when v2 ships, v1 does not disappear immediately. Deprecated endpoints return a `Deprecation` and `Sunset` HTTP header (per RFC 8594) pointing to the replacement and the shutdown date, giving integrators, including the platform's own frontend, a minimum 90-day migration window before v1 is removed.
+
+---
+
+## 5. API Naming Conventions
+
+### Resource naming
+
+Resources are plural nouns, lowercase, hyphenated for multi-word resources: `/campaigns`, `/workflow-executions`, `/knowledge-base`. Nesting is used only where a resource cannot exist without its parent (`/campaigns/{id}/workflow-executions`), and capped at two levels deep; anything that would require a third level (for example, a single carousel slide) is instead addressed by its own top-level ID (`/carousel-slides/{id}`) to avoid unwieldy URLs.
+
+### HTTP methods
+
+| Method | Use |
+|---|---|
+| `GET` | Retrieve a resource or collection. Never mutates state. |
+| `POST` | Create a resource, or trigger an action that does not map cleanly to a resource state change (e.g. `POST /workflow-executions/{id}/retry`) |
+| `PATCH` | Partial update to an existing resource |
+| `PUT` | Not used in this API. Full-resource replacement adds risk for AI-generated content with many fields; `PATCH` with explicit fields is safer and matches how the WYSIWYG editor sends edits. |
+| `DELETE` | Soft-delete (sets `deleted_at`), per the Database Design document's global soft-delete convention. Hard deletes exist only in the GDPR erasure worker, never as a client-facing endpoint. |
+
+### Status codes
+
+| Code | Meaning in this API |
+|---|---|
+| `200 OK` | Successful `GET` or `PATCH` |
+| `201 Created` | Successful `POST` that created a resource synchronously (e.g. a brand profile) |
+| `202 Accepted` | Successful `POST` that enqueued asynchronous work (e.g. campaign creation); response body includes the resource in its initial state, not the final result |
+| `204 No Content` | Successful `DELETE` |
+| `400 Bad Request` | Request shape is invalid (fails Pydantic validation) |
+| `401 Unauthorized` | Missing or invalid authentication |
+| `403 Forbidden` | Authenticated, but not authorized for this organization or role |
+| `404 Not Found` | Resource does not exist, or exists but is outside the caller's organization (the API returns 404, not 403, when a resource is invisible to the caller, to avoid confirming the existence of other organizations' data) |
+| `409 Conflict` | Action is invalid given the resource's current state (e.g. approving a campaign that is not `AWAITING_APPROVAL`) |
+| `422 Unprocessable Entity` | Request is well-formed and passes schema validation but fails a business rule (e.g. a negative constraint violation caught before an agent runs) |
+| `429 Too Many Requests` | Rate limit exceeded, see Section 12 |
+| `500 Internal Server Error` | Unhandled server fault |
+| `503 Service Unavailable` | A required upstream (LLM provider, LinkedIn API) is down; used instead of 500 when the API can distinguish the failure as external |
+
+### Error responses
+
+A single error envelope shape is used everywhere in the API (full schema in Section 11).
+
+### Pagination
+
+Cursor-based (keyset) pagination on every collection endpoint, matching the Database Design document's UUIDv7 primary key strategy, which makes ID-based cursors naturally chronological without a separate `created_at` cursor column.
 
 ```
-Goal Interpreter -> Planner Agent -> Workflow Generator -> Tool Selection Agent
--> Execution Engine -> Validation Agent -> Memory System -> Learning Engine
+GET /api/v1/campaigns?limit=25&cursor=01930a2e-...
 ```
 
-Three problems, in order of how much they will hurt you.
+Response includes `next_cursor` (null when no further pages exist) rather than a total count, since counting large, frequently-written tables like `Audit Logs` or `Content Performance` is expensive and rarely what the client actually needs.
 
-**It has no feedback loops, and real agent systems need several.** When Validation fails, where does control go? Your diagram implies "the end," but in practice it needs to go back to the Planner (replan), back to Tool Selection (try a different tool), or back to Execution (retry). A strict pipeline cannot express that without becoming a graph, at which point you should draw it as one from the start.
+### Filtering and sorting
 
-**Memory is placed as a terminal step, but it needs to be a resource everything else reads from continuously.** The Goal Interpreter needs memory to understand context. The Planner needs memory to recall which workflows have succeeded before. Tool Selection needs memory to know which tools have been reliable. Writing memory only at the end of the pipeline throws away most of its value.
+Filtering uses explicit query parameters rather than a generic query language, to keep validation simple and indexes predictable: `GET /api/v1/campaigns?status=awaiting_approval&brand_profile_id=...`. Sorting is limited to a fixed, documented set of fields per resource (`?sort=created_at&order=desc`), matching the indexes actually defined in the Database Design document, so a sort parameter can never silently trigger a full table scan.
 
-**Eight coordinated agents is a lot of surface area for a version one, and the decomposition is premature.** Every hop between agents is a place where context degrades and errors compound. CrewAI's own benchmarks show multi-agent coordination can cost up to 4x the tokens of a single-agent approach for the same task, largely because of this kind of handoff overhead. You do not yet have data on where your failures will actually occur, so splitting Goal Interpreter, Planner, and Workflow Generator into three agents now decides the answer before you have asked the question. Collapse Goal Interpreter and Planner into one call with structured output, and treat Workflow Generator and Tool Selector as one step, since you cannot sensibly build a workflow without knowing what tools are available.
+---
 
-### A revised shape
+## 6. Core API Modules
 
-This is my judgment, not the only valid design, but it reflects where the more mature platforms in the comparison table have converged.
+Every endpoint below is implicitly `Authorization: Bearer <clerk_jwt>` plus, where noted, `X-Organization-Id`. Request and response bodies are JSON. Fields shown are representative, not exhaustive, but every field shown is a real field from the Database Design document's schema, not a placeholder.
 
+### 6.1 Authentication
+
+**Purpose**: Session and identity endpoints not already handled by Clerk's own hosted UI.
+
+- `GET /api/v1/auth/me` — returns the current user plus their organization memberships and roles
+- `POST /api/v1/auth/switch-organization` — validates the target organization membership and returns an updated context for the frontend to store
+
+**Validation**: none beyond JWT presence. **Authorization**: any authenticated user.
+
+### 6.2 Organizations
+
+**Purpose**: The root tenant entity (Vision document's agency).
+
+- `POST /api/v1/organizations` — creates an organization; the creator becomes `Owner`
+- `GET /api/v1/organizations/{id}` — organization profile and plan/billing status
+- `PATCH /api/v1/organizations/{id}` — update name, settings
+- `GET /api/v1/organizations/{id}/members` — list members and roles
+- `POST /api/v1/organizations/{id}/members` — invite a user by email with a role
+- `PATCH /api/v1/organizations/{id}/members/{user_id}` — change a member's role
+- `DELETE /api/v1/organizations/{id}/members/{user_id}` — remove a member
+
+**Validation**: organization name 1 to 100 characters; role must be one of `owner`, `editor`, `viewer`; cannot remove the last remaining `Owner`. **Authorization**: `Owner` only for membership mutations; any member for `GET`.
+
+### 6.3 Users
+
+**Purpose**: The authenticated individual's own profile (Clerk owns credentials; this module owns app-specific profile data).
+
+- `GET /api/v1/users/me` — profile, notification preferences
+- `PATCH /api/v1/users/me` — update display name, notification preferences
+
+**Validation**: notification preferences restricted to a known enum set. **Authorization**: self only; there is no endpoint to fetch another user's profile directly, membership lists (6.2) are the sanctioned way to see who else is in an organization.
+
+### 6.4 Brands
+
+**Purpose**: The `Brand Profiles` entity, the agency's client.
+
+- `POST /api/v1/brands` — create a brand profile
+- `GET /api/v1/brands` — list brands for the current organization, paginated
+- `GET /api/v1/brands/{id}` — brand detail, including linked brand voice and asset counts
+- `PATCH /api/v1/brands/{id}` — update brand metadata
+- `DELETE /api/v1/brands/{id}` — soft-delete
+- `GET /api/v1/brands/{id}/voice` / `PUT /api/v1/brands/{id}/voice` — get/set structured brand voice rules and negative constraints (e.g. "no emojis")
+
+Example request for the voice endpoint, because negative constraints are directly load-bearing for the Validation Agent described in the PRD:
+
+```json
+PUT /api/v1/brands/b1f0.../voice
+{
+  "tone_descriptors": ["direct", "technical", "no marketing fluff"],
+  "negative_constraints": ["no emojis", "no exclamation points", "never say 'game-changing'"],
+  "reading_level": "professional",
+  "preferred_cta_style": "question-based"
+}
 ```
-                    +----------------------------+
-                    |     Shared Memory Layer      |
-                    | episodic / semantic /        |
-                    | procedural, scoped by        |
-                    | user, project, and org        |
-                    +------^--------------^---------+
-                           |              |   read/write at every stage
-              +------------+              +-------------+
-              |                                          |
-   +----------v-----------+                  +-----------v-----------+
-   | Interpreter + Planner |     typed plan   |  Deterministic          |
-   | (one LLM call,         |----------------> |  Execution Graph         |
-   |  structured output:    |  (a schema,      |  (typed nodes, code-     |
-   |  a plan schema, not    |   not free       |  validated edges)        |
-   |  free text)             |   text)          +-----------+-------------+
-   +-------------------------+                              |
-              |                                                | each node
-              | tool grants scoped                             | calls one
-              | to this run only                               | tool or one
-              v                                                  | narrow LLM
-   +-------------------------+                                    | subtask
-   | Curated Tool Registry     |<-----------------------------------+
-   | (5-10 tools for v1;       |
-   | risk-tiered: read-only,   |
-   | reversible-write,          |
-   | irreversible)               |
-   +-------------+----------------+
-                 |
-     +-----------+-------------+
-     |           |               |
-     v           v               v
-read-only   reversible        irreversible
-auto-run    write auto-run    -> human approval gate
-                                     |
-                                     v
-                          +------------------------+
-                          | Validation +              |
-                          | Checkpointing               |
-                          | (retry / alternate tool /    |
-                          |  escalate to human)            |
-                          +-------------+-------------------+
-                                        |
-                                        v
-                           Audit log + finished deliverable
+
+**Validation**: `negative_constraints` capped at 50 entries to keep prompt context bounded; brand must belong to the caller's organization. **Authorization**: `Editor` or `Owner` to write, any role to read.
+
+### 6.5 Campaigns
+
+**Purpose**: The parent object for a single goal-to-execution run. The most important resource in the API.
+
+- `POST /api/v1/campaigns` — the primary entry point described in the Vision document: submit a natural-language goal, get a campaign back in `PENDING` state, and a workflow execution enqueued
+- `GET /api/v1/campaigns` — list, filterable by `status`, `brand_profile_id`, `created_after`
+- `GET /api/v1/campaigns/{id}` — full detail including current workflow execution status
+- `PATCH /api/v1/campaigns/{id}` — update metadata (name, deadline) not the goal itself, once execution has started the goal is immutable for that run; a changed goal is a new campaign
+- `DELETE /api/v1/campaigns/{id}` — soft-delete, cancels any in-flight workflow execution first
+
+```json
+POST /api/v1/campaigns
+{
+  "brand_profile_id": "b1f0...",
+  "goal": "Launch a LinkedIn campaign about Kubernetes security aimed at platform engineering leads",
+  "constraints": {
+    "post_count": 5,
+    "deadline": "2026-07-25",
+    "include_carousel": true
+  }
+}
 ```
 
-The differences that matter:
+```json
+202 Accepted
+{
+  "id": "c9a2...",
+  "status": "pending",
+  "workflow_execution_id": "we0b...",
+  "created_at": "2026-07-11T10:02:00Z"
+}
+```
 
-- **The plan the LLM produces is a typed, structured object (a schema, effectively a small DAG), not free text that another LLM has to interpret.** This is the "LLM proposes, code disposes" pattern, and it is how the more reliability-focused platforms in the comparison table are built. It means the execution layer can validate a plan before running it, rather than discovering problems mid-execution.
-- **Autonomy is tiered by the reversibility of the action, not left to a vague "ask when necessary" rule.** Read-only actions and easily reversible writes run without a human in the loop. Anything irreversible, sending an email, posting publicly, spending money, changing a production record, requires approval before it fires. This single change would have prevented a meaningful share of the public agent failures referenced in the market research section, including the pattern behind Klarna's walk-back.
-- **Memory is queried at the start (context for interpretation and planning) and written at the end (outcome for future retrieval), not bolted on as a final stage.**
+**Validation**: `goal` required, 10 to 2000 characters; `constraints.post_count` between 1 and 20 for Version 1; organization must have available quota (Section 12). **Authorization**: `Editor` or `Owner` to create; any role to read.
 
-### Monolith or microservices, and how agents should communicate
+### 6.6 Campaign Goals
 
-Start as a modular monolith. A FastAPI backend with clean internal boundaries between the interpreter and planner, the execution graph, the tool registry, and memory, backed by Celery workers for anything long-running. Microservices add real operational cost, network calls between services, distributed tracing, independent deployment pipelines, for a benefit you will not need until you have concrete, measured scaling pain, which is realistically well past the point of having paying customers, not on day one.
+**Purpose**: The structured, parsed representation of the natural-language goal (the Intent Engine's output described in the PRD).
 
-Within that monolith, agent communication should follow a **state graph with a shared memory substrate**, which is conceptually what LangGraph itself implements and what CrewAI's Flows are designed to enforce. Planning should be **LLM-driven but deterministically executed**: the model proposes a plan in a fixed schema, and everything downstream of that is ordinary code, not another model call guessing at intent.
+- `GET /api/v1/campaigns/{id}/goal` — returns the structured `{objective, target_audience, tone, deadline}` the Planner extracted from the raw goal text
 
-One infrastructure choice worth naming directly: evaluate **Temporal**, or a comparable durable-execution engine such as Prefect, DBOS, or Inngest, before committing to hand-rolled retry and resume logic on Celery and Redis. Reliable long-running, resumable, stateful workflows with retries, timeouts, and human-approval pauses are exactly the problem durable-execution engines exist to solve, and building that reliably from scratch is a substantial, easy-to-get-wrong undertaking. OpenAI's own Agents SDK shipped a general-availability Temporal integration in March 2026, and the common production pattern reported across several teams in 2026 is LangGraph handling agent control flow, wrapped by Temporal for the parts of the workflow where a crash cannot mean starting over from the beginning. Temporal has more than 1,500 paying customers at this point, including Netflix, Stripe, and Snap. Migrating a live production task queue later, after you have built a customer base on Celery, is far more painful than evaluating this now.
+This is intentionally read-only in Version 1. The PRD's out-of-scope section excludes "dynamic, real-time workflow reconfiguration," and allowing edits to the parsed goal after planning has started would reopen that door. **Authorization**: any role.
 
-### Memory design
+### 6.7 Workflow Executions
 
-Split memory into three kinds, a distinction that has proven useful across most of the platforms in the comparison table:
+**Purpose**: Tracks the lifecycle of a single DAG run. Covered in full in Section 7.
 
-- **Episodic memory**: records of specific past executions, what happened, when, and with what outcome. Used for debugging and for "have we done something like this before" retrieval.
-- **Semantic memory**: stable facts about the user, the organization, and its preferences. Brand voice, standing constraints, tool credentials.
-- **Procedural memory**: reusable workflow templates distilled from executions that succeeded repeatedly. This is the realistic, buildable version of your "Learning Engine." Genuine online learning, where the planning policy measurably improves from feedback on past runs, is still a research problem, not a version one or two feature. Promoting a workflow that has succeeded five times into a named, reusable template is achievable now and delivers most of the practical value people associate with "the system gets smarter."
+- `GET /api/v1/workflow-executions/{id}` — status, current step, timestamps
+- `POST /api/v1/workflow-executions/{id}/pause`
+- `POST /api/v1/workflow-executions/{id}/resume`
+- `POST /api/v1/workflow-executions/{id}/cancel`
+- `POST /api/v1/workflow-executions/{id}/retry`
+- `GET /api/v1/workflow-executions/{id}/logs`
 
-Scope memory across at least three layers: per-user, per-project, and per-organization, with the organization layer needing real access control so one user's private context does not leak into another user's session inside the same account.
+### 6.8 Workflow Steps
 
-### Workflow generation: loops, branching, replanning
+**Purpose**: Individual DAG nodes (Research, Strategy, and so on).
 
-Represent generated workflows as directed graphs with typed nodes, not a linear sequence. Evaluate conditional edges with small deterministic checks or a narrow classifier call where possible, rather than re-running full agent reasoning at every branch, since that matters for both cost and latency at any real volume. Trigger replanning on specific events, a validation failure, a materially changed state, rather than continuously, since invoking a planning-grade LLM call after every step is both slow and unnecessary for well-scoped subtasks.
+- `GET /api/v1/workflow-executions/{id}/steps` — ordered list of steps with status, timing, and token cost per step
+- `GET /api/v1/workflow-steps/{id}` — single step detail including the agent that ran it
 
-### Failure recovery
+**Authorization**: any role, read-only. There is no create/update endpoint; steps are written exclusively by the Execution Engine's internal service layer, never by an API client.
 
-A tiered approach, roughly in this order:
+### 6.9 Generated Content
 
-1. **Automatic retry with backoff** for transient failures (rate limits, timeouts).
-2. **Pre-declared alternate-tool fallback** for tool-specific failures, decided at design time, not invented autonomously at failure time. "The agent creatively finds another way" is much harder to make reliable than "if tool A fails, try pre-approved tool B."
-3. **Checkpointing after every completed node**, so a failed workflow resumes from where it broke rather than restarting the whole goal.
-4. **Escalation to a human with a short, clear summary of what failed and why**, not a wall of raw logs. Designing that summary well is a real, underrated problem in this category; several platforms in the comparison table still handle it poorly.
-5. **Rollback, scoped only to reversible actions.** You cannot meaningfully roll back a sent email or a posted tweet, so the right control is preventing the irreversible action from firing without approval, not building rollback for the impossible case.
+**Purpose**: The `Generated Content` entity, LinkedIn post drafts and their approved versions.
 
-### Security
+- `GET /api/v1/campaigns/{id}/content` — all generated content for a campaign
+- `GET /api/v1/generated-content/{id}` — single post, both `draft_content` and `approved_content` if it has been edited
+- `PATCH /api/v1/generated-content/{id}` — the WYSIWYG editor's save action; writes to `approved_content` and appends an `Audit Logs` row and a `Memory` entry recording the diff, per the PRD's requirement that edits feed back into learning
 
-Given the tool list you specified, Gmail, Slack, GitHub, Google Drive, Notion, Calendar, the largest concrete security risk is **prompt injection**: content the agent reads during execution, an email, a web page, a document, containing hidden instructions designed to hijack its behavior. This is not hypothetical. The MCP ecosystem alone recorded more than 30 disclosed vulnerabilities in January and February 2026, including a cross-tenant data leak at Asana and a path-traversal issue that exposed thousands of connected apps through Smithery. Any platform with broad tool access reading untrusted content is a direct target for this, and it remains largely unsolved industry-wide, not a gap specific to your design.
+```json
+PATCH /api/v1/generated-content/gc44.../
+{
+  "approved_content": "Kubernetes RBAC misconfigurations are the single most common..."
+}
+```
 
-Concrete mitigations worth building in from the start:
+**Validation**: content length within LinkedIn's post limits (3,000 characters for a standard post); cannot edit content belonging to a campaign in `completed` or `cancelled` state. **Authorization**: `Editor` or `Owner`.
 
-- Keep a strict separation, wherever the model architecture allows it, between instructions and fetched data, so the model is less likely to treat retrieved content as a new command.
-- Issue **scoped credentials per workflow run**, not one broad token with standing access to everything.
-- Maintain an explicit allowlist of which actions can touch which resources, per workflow.
-- Sandbox any code-execution capability completely, separate from the credential-bearing execution path.
-- Log every tool call, input and output, for audit. This is one of the features enterprise buyers rank above ease-of-use and speed, per CrewAI's own 2026 survey: 34% ranked security and governance as the top evaluation criterion, ahead of integration ease at 30% and raw reliability at 24%.
-- Never let the model see a raw secret. Broker every tool call through a controlled layer that injects credentials server-side.
-- Apply the risk-tiered approval model from the architecture diagram: it is a security control as much as a UX one.
+### 6.10 Carousel Slides
 
-### Scalability
+**Purpose**: Child entities of Generated Content for the multi-slide carousel format.
 
-- **Around 100 users**: a single Postgres instance, Redis, and a couple of Celery workers is enough. The priority is iteration speed, not scale engineering.
-- **Around 10,000 users**: worker autoscaling, queue partitioning so one large customer does not starve everyone else, and monitoring on stuck or runaway jobs all become necessary. Langfuse for LLM-specific tracing plus standard infrastructure monitoring covers this.
-- **100,000+ users and millions of executions**: this is where hand-rolled Celery retry logic tends to show its limits, and where the Temporal evaluation above pays for itself. Whatever vector store you land on will need a real sharding or managed-service strategy. Cost control becomes a first-class product feature, not an internal concern, because a bug that causes a runaway agent loop is a real financial event.
+- `GET /api/v1/generated-content/{id}/carousel-slides` — ordered slides
+- `PATCH /api/v1/carousel-slides/{id}` — edit a single slide's text
+
+**Validation**: slide order is fixed at generation time; Version 1 does not support reordering or adding slides, only editing text within a slide, per the PRD's fixed-pipeline scope.
+
+### 6.11 Image Prompts
+
+**Purpose**: Text prompts intended for the user's own Midjourney or Canva workflow, per the PRD's explicit Version 1 scope (no native image generation).
+
+- `GET /api/v1/generated-content/{id}/image-prompts`
+- `PATCH /api/v1/image-prompts/{id}` — edit prompt text
+- `POST /api/v1/image-prompts/{id}/copy-event` — optional analytics ping so the product can measure how often prompts are actually used, supporting the Zero-Touch Rate metric
+
+### 6.12 Media Assets
+
+**Purpose**: Brand logos, color palettes, and any final images a user uploads back into the platform after generating them externally.
+
+- `POST /api/v1/media-assets` — `multipart/form-data` upload, returns a Supabase Storage URI
+- `GET /api/v1/brands/{id}/media-assets`
+- `DELETE /api/v1/media-assets/{id}`
+
+**Validation**: file type restricted to `image/png`, `image/jpeg`, `image/webp`; max 10MB. **Authorization**: `Editor` or `Owner`.
+
+### 6.13 Approvals
+
+**Purpose**: Tracks who approved what, when, mapped directly to the Database Design document's `Approvals` entity and the Human Approval Flow.
+
+- `POST /api/v1/campaigns/{id}/approve` — the single most consequential endpoint in the API; transitions a campaign from `awaiting_approval` to resume execution toward publishing
+- `POST /api/v1/campaigns/{id}/request-changes` — sends the campaign back to content generation with the reviewer's notes attached as additional context for the Content agents
+
+```json
+POST /api/v1/campaigns/c9a2.../approve
+{
+  "approved_content_ids": ["gc44...", "gc45...", "gc46..."],
+  "note": "Approved, ship as scheduled"
+}
+```
+
+**Validation**: campaign must be in `awaiting_approval` state, otherwise `409 Conflict`; every `generated_content_id` in the request must belong to this campaign. **Authorization**: `Editor` or `Owner`, matching the PRD's mandatory human-in-the-loop requirement, this cannot be bypassed by any role in Version 1.
+
+### 6.14 Publishing Jobs
+
+**Purpose**: The queue for sending approved content to LinkedIn.
+
+- `GET /api/v1/campaigns/{id}/publishing-jobs`
+- `GET /api/v1/publishing-jobs/{id}` — status (`queued`, `scheduled`, `published`, `failed`), scheduled time, LinkedIn post ID once live
+- `PATCH /api/v1/publishing-jobs/{id}` — reschedule `scheduled_time`, only while status is `queued` or `scheduled`
+- `POST /api/v1/publishing-jobs/{id}/cancel`
+
+**Validation**: `scheduled_time` must be in the future; cannot patch a job that has already published, that returns `409 Conflict`. **Authorization**: `Editor` or `Owner`.
+
+### 6.15 Analytics
+
+**Purpose**: Post-campaign performance, ingested from LinkedIn per the PRD.
+
+- `GET /api/v1/campaigns/{id}/analytics` — impressions, clicks, engagement rate against the original goal
+- `GET /api/v1/brands/{id}/analytics/summary` — rolled-up performance across a brand's campaigns, the input to the Phase 2 "closed-loop performance ingestion" described in the Vision document
+
+**Authorization**: any role, read-only.
+
+### 6.16 Memory
+
+**Purpose**: Exposes the `Memory` entity, structured learnings derived from historical edits, primarily for transparency (the Vision document's "Radical Clarity" principle) rather than direct manipulation.
+
+- `GET /api/v1/brands/{id}/memory` — list learned preferences (e.g. "user consistently deletes hashtags"), each with the evidence count and the date it was last reinforced
+- `DELETE /api/v1/memory/{id}` — lets a user retract a learned preference that no longer applies
+
+**Authorization**: `Editor` or `Owner`.
+
+### 6.17 Knowledge Base
+
+**Purpose**: Uploaded brand guideline documents and their embedding sync status.
+
+- `POST /api/v1/brands/{id}/knowledge-base` — `multipart/form-data` upload (PDF, DOCX, TXT); returns immediately with `sync_status: pending`, embedding happens asynchronously
+- `GET /api/v1/brands/{id}/knowledge-base` — list documents and sync status
+- `DELETE /api/v1/knowledge-base/{id}` — removes both the Postgres record and the corresponding Qdrant vectors
+
+**Validation**: file type restricted to `application/pdf`, `text/plain`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`; max 25MB.
+
+### 6.18 Prompt Templates
+
+**Purpose**: Version-controlled system prompts per agent, per the Database Design document. Internal/admin surface, not exposed to ordinary agency users in Version 1.
+
+- `GET /api/v1/admin/prompt-templates` — list, filterable by agent
+- `POST /api/v1/admin/prompt-templates` — create a new version
+- `PATCH /api/v1/admin/prompt-templates/{id}/activate` — promote a version to active
+
+**Authorization**: platform-internal role, not any of the three organization-scoped roles; enforced by a separate `is_platform_admin` claim, not by `X-Organization-Id` at all.
+
+### 6.19 Tool Connections
+
+**Purpose**: Encrypted OAuth credentials for external tools, currently LinkedIn only.
+
+- `GET /api/v1/brands/{id}/tool-connections` — connection status per platform, never returns the token itself
+- `POST /api/v1/brands/{id}/tool-connections/linkedin/authorize` — returns a LinkedIn OAuth URL to redirect the user to
+- `GET /api/v1/tool-connections/linkedin/callback` — OAuth callback, exchanges the code, encrypts and stores the token (AES-256-GCM per the Technical Architecture document), never returned in any subsequent response body
+- `DELETE /api/v1/brands/{id}/tool-connections/linkedin` — revoke
+
+**Authorization**: `Owner` only, given the sensitivity of publishing credentials.
+
+### 6.20 Notifications
+
+**Purpose**: In-app and email notifications (campaign awaiting approval, publishing failed, and so on).
+
+- `GET /api/v1/notifications` — the current user's notifications, paginated, filterable by `read`
+- `PATCH /api/v1/notifications/{id}` — mark read
+- `POST /api/v1/notifications/mark-all-read`
+
+### 6.21 Audit Logs
+
+**Purpose**: The insert-only ledger. Read-only surface for Version 1; no client ever writes to this table directly, every write is a side effect of another action.
+
+- `GET /api/v1/organizations/{id}/audit-logs` — filterable by `actor_id`, `resource_type`, `date_range`
+
+**Authorization**: `Owner` only.
+
+### 6.22 Feature Flags
+
+**Purpose**: Internal rollout control for new agents or DAG structures.
+
+- `GET /api/v1/feature-flags` — flags active for the caller's organization
+
+**Authorization**: read-only, any role; writes happen through an internal admin tool, not this API, in Version 1.
+
+### 6.23 Health Check and System Settings
+
+- `GET /api/v1/health` — no auth required; returns `200 OK` with database, Redis, and Qdrant connectivity status, used by the deployment platform's health probes
+- `GET /api/v1/system/settings` — public, non-sensitive platform configuration the frontend needs at boot (feature flags aside), such as supported file types and size limits
+
+---
+
+## 7. Workflow Execution APIs
+
+These endpoints operate on the state machine described in the Technical Architecture document (`PENDING`, `RESEARCHING`, `STRATEGIZING`, `GENERATING_CONTENT`, `AWAITING_APPROVAL`, `PUBLISHING`, `COMPLETED`, `FAILED`, `CANCELLED`).
+
+**Start**: implicit. There is no separate "start workflow" endpoint; `POST /api/v1/campaigns` both creates the campaign and enqueues its workflow execution in one call, because in Version 1 a campaign cannot exist without exactly one workflow execution.
+
+**Pause**: `POST /api/v1/workflow-executions/{id}/pause`. Valid from any in-progress state. Sets status to `PAUSED` and prevents the next Celery task in the chain from being enqueued once the current step finishes; it does not kill an already-running step, since interrupting an in-flight LLM call generates no useful state to resume from.
+
+**Resume**: `POST /api/v1/workflow-executions/{id}/resume`. Valid from `PAUSED` or `AWAITING_APPROVAL` (the latter is what the approval endpoint in Section 6.13 calls internally). Re-enqueues the next step using the checkpointed `Task Results` context.
+
+**Cancel**: `POST /api/v1/workflow-executions/{id}/cancel`. Terminal. Valid from any non-terminal state. Any in-flight Publishing Job is cancelled with it if it has not yet fired.
+
+**Retry**: `POST /api/v1/workflow-executions/{id}/retry`. Valid only from `FAILED`. Re-enqueues the failed step using its last checkpoint, incrementing `retry_count`; after 3 automatic retries (matching the exponential backoff policy in the Technical Architecture document) the workflow moves to `FAILED` and requires this explicit, human-triggered retry rather than retrying indefinitely on its own.
+
+```json
+GET /api/v1/workflow-executions/we0b...
+{
+  "id": "we0b...",
+  "campaign_id": "c9a2...",
+  "status": "generating_content",
+  "current_step": "copywriter_agent",
+  "started_at": "2026-07-11T10:02:03Z",
+  "steps_completed": 3,
+  "steps_total": 6,
+  "retry_count": 0
+}
+```
+
+**Track progress**: `GET /api/v1/workflow-executions/{id}` (poll) or a WebSocket at `WS /api/v1/workflow-executions/{id}/stream` (push), matching the Technical Architecture document's system diagram, which shows both REST and WebSocket channels between the frontend and the API layer. The WebSocket exists specifically so the "real-time terminal/graph UI" described in the PRD's user journey does not require aggressive polling.
+
+**Retrieve logs**: `GET /api/v1/workflow-executions/{id}/logs` returns the ordered list of step transitions, each with a human-readable message ("Research Agent found 12 relevant sources", "Validation Agent flagged a tone deviation in post 3"), not raw stack traces. This directly implements the Architecture Review's recommendation, carried over from the broader analysis this project grew out of, that failure summaries need their own design attention rather than surfacing raw logs to a non-technical account manager.
+
+---
+
+## 8. AI Agent APIs
+
+Agents are never called directly by frontend clients. There is no `POST /api/v1/agents/research` endpoint, and there should not be one: exposing agents individually would let a client construct ad hoc workflows, which contradicts the "goal-driven, never workflow-driven" principle from the Vision document. Agents are invoked exclusively by the Execution Engine's internal Agent Router. This section documents their contracts because the Workflow Steps and Logs endpoints (6.8, 7) surface agent inputs and outputs to the frontend, and the shapes need to be stable.
+
+| Agent | Inputs | Outputs | Error handling |
+|---|---|---|---|
+| **Research** | Goal, target audience, brand domain | Structured `ContextDocument` (sources, key facts, competitor notes) | On zero usable sources found, does not fabricate; returns a `ContextDocument` flagged `low_confidence`, which the Strategy Agent must handle explicitly rather than silently proceeding |
+| **Strategy** | `ContextDocument`, goal, brand voice | `CampaignArchitecture` (post count, sequence, format per post, messaging pillars) | Validates its own output against `constraints.post_count` from the Campaign Goal before returning; a mismatch is a hard failure, not a silent adjustment |
+| **Copywriter** | `CampaignArchitecture`, brand voice, top-3 similar past posts from Qdrant | Draft LinkedIn post text per post in the architecture | Enforces LinkedIn's character limit at generation time, not just at save time |
+| **Carousel** | `CampaignArchitecture` entries flagged as carousel format | Ordered slide text | Caps slide count at 10 per LinkedIn's own carousel limit |
+| **Image Prompt** | Draft post text, brand visual guidelines | Text prompts for external image tools | N/A, no external call to fail; pure generation |
+| **Validator** | All draft content, brand voice negative constraints, `ContextDocument` | Pass/fail per piece of content, with specific flagged spans and reasons | This is the "internal adversarial network" from the PRD; a fail here routes the workflow to `AWAITING_APPROVAL` with the flags attached rather than silently blocking, so a human sees exactly what was caught and why |
+| **Publisher** | Approved content, LinkedIn tool connection, scheduled time | `Publishing Job` status transition | On a LinkedIn API error (rate limit, token expired), retries per the standard backoff policy; on token expiry specifically, also fires a notification (6.20) telling the Owner to reauthorize, since this failure mode cannot be resolved by retrying alone |
+| **Analytics** | LinkedIn post IDs from completed Publishing Jobs | Impression/engagement records written to `Content Performance` | Runs on a schedule (not part of the synchronous DAG), so its errors never affect a campaign's completion status |
+
+---
+
+## 9. File Upload APIs
+
+Three upload surfaces exist, all using `multipart/form-data` against a FastAPI endpoint that streams directly to Supabase Storage rather than buffering the full file in application memory:
+
+- **Brand assets**: logos, color palette references. See 6.12.
+- **Knowledge base documents**: brand guidelines, past post examples. See 6.17. These trigger an asynchronous embedding job (chunk, embed via the OpenAI embeddings API, write to Qdrant, update `sync_status`) rather than blocking the upload response.
+- **Generated files**: CSV exports of a campaign's content, produced on demand rather than stored: `GET /api/v1/campaigns/{id}/export.csv`, streamed directly rather than pre-generated and stored, since it is cheap to regenerate and storing it would be one more thing to keep in sync.
+
+**Storage strategy**: every upload gets a Supabase Storage object under a path namespaced by organization ID (`{organization_id}/brands/{brand_id}/knowledge-base/{uuid}.pdf`), matching the Database Design document's tenant isolation principle at the storage layer, not just the database layer. Only the URI is ever stored in Postgres.
+
+---
+
+## 10. Webhook Architecture
+
+Version 1 has one true inbound webhook consumer (LinkedIn) and one outbound webhook capability (for the future public API in Section 16, stubbed but not exposed to customers yet).
+
+**Publishing callbacks**: LinkedIn does not push webhooks for post status in the way this document would ideally want; the Publisher Agent polls for confirmation after scheduling. This is documented here explicitly because it is a real constraint the Technical Architecture document does not call out: `Publishing Jobs` status is confirmed via polling with backoff, not a callback, until LinkedIn's API offers one.
+
+**Third-party integrations (outbound, future)**: when the platform exposes a public API (Section 16), organizations will be able to register a webhook URL to receive `campaign.completed`, `content.approved`, and `publishing.failed` events. Designing the event names and payload shapes now, even though no endpoint fires them yet, avoids a breaking change later:
+
+```json
+{
+  "event": "campaign.completed",
+  "organization_id": "...",
+  "campaign_id": "...",
+  "timestamp": "2026-07-11T10:14:02Z"
+}
+```
+
+**Retry policy (future)**: exponential backoff, 5 attempts over 24 hours, then the webhook is marked `failed` and surfaced in a dashboard rather than retried indefinitely.
+
+**Security (future)**: every outbound webhook payload is signed with an HMAC-SHA256 secret unique to the organization, sent in an `X-Signature` header, so a receiving system can verify authenticity without exposing any platform credential.
+
+---
+
+## 11. Error Handling Strategy
+
+Every error response, regardless of source, uses one envelope:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "goal must be between 10 and 2000 characters",
+    "status": 400,
+    "details": [
+      {"field": "goal", "issue": "too_short"}
+    ],
+    "request_id": "req_9f2c..."
+  }
+}
+```
+
+`request_id` is generated per request and attached to every log line and Langfuse trace touched during that request, so a support conversation about a specific failure can go straight from a user-reported ID to the exact trace, without grepping logs by timestamp.
+
+- **Validation errors** (`400`): Pydantic schema failures, caught by a global exception handler, never a bare FastAPI default error shape.
+- **Authentication errors** (`401`): missing, malformed, or expired JWT.
+- **Business logic errors** (`409`, `422`): state conflicts and rule violations, always with a `message` a non-technical account manager can read directly in a toast notification, not a stack trace fragment.
+- **Rate limiting** (`429`): includes a `Retry-After` header in seconds, not just the error body.
+- **Server errors** (`500`, `503`): the response body never includes exception details or stack traces, only the `request_id`, full detail goes to Sentry, matching the Technical Architecture document's observability section.
+
+---
+
+## 12. Rate Limiting
+
+Redis-backed sliding window, keyed by different dimensions depending on what is being protected, matching the Technical Architecture document's rate limiting note but made specific here:
+
+| Limit | Key | Default | Reason |
+|---|---|---|---|
+| General API requests | `user_id` | 300 requests/minute | Protects against runaway frontend polling loops, the most likely accidental abuse pattern |
+| Campaign creation | `organization_id` | Plan-dependent (e.g. 10/day on a starter tier) | Directly bounds LLM spend; this is a billing control as much as an infrastructure one |
+| AI generation (retry, request-changes) | `organization_id` | 50 agent invocations/hour | Prevents a confused or automated client from looping the Validator/Copywriter cycle indefinitely and running up token cost |
+| Webhook delivery (future) | `organization_id` | 100/minute outbound | Protects the platform's own egress and the receiving system |
+
+Limits are enforced in the Business Layer, not the Repository Layer, and return `429` with `Retry-After` before any database or LLM call is made, so a rate-limited request never consumes the resource it was trying to protect.
+
+---
+
+## 13. API Security
+
+- **Authentication**: Clerk-issued JWT, verified on every request per Section 3.
+- **Authorization**: RBAC plus organization scoping per Section 3, enforced twice, once in the Business Layer and once at the database level via Postgres Row Level Security, so an application-layer bug cannot by itself leak cross-tenant data.
+- **Input validation**: every request body is a Pydantic model with explicit field constraints (length, format, enum membership); no endpoint accepts an untyped dictionary.
+- **Prompt injection protection**: this deserves more than a bullet point, because the platform's tool list (LinkedIn publishing, document ingestion, web research) makes it a real, not theoretical, risk. Three concrete controls: user-supplied goal text and any content fetched by the Research Agent are passed to the LLM in a clearly delimited data field, never concatenated into the system prompt string; the Validator Agent independently reviews all generated content before it can reach `awaiting_approval`, acting as a second, differently-prompted check rather than trusting the generating agent's own judgment; and the Publisher Agent will only ever act on content that has passed through the `Approvals` endpoint (6.13), so even a fully successful prompt injection against an earlier agent cannot cause a LinkedIn post to go out without a human clicking approve.
+- **Secret management**: LinkedIn OAuth tokens and any platform API keys are encrypted at rest with AES-256-GCM; the encryption key itself lives in the deployment platform's secret manager, never in the database or in environment variables checked into source control.
+- **CORS**: the API allows only the deployed frontend origin(s) in production; local development origins are permitted only when `ENVIRONMENT=development`.
+- **CSRF**: not applicable in the traditional sense, since the API is a pure JSON API authenticated via bearer token rather than cookies, which is itself the standard mitigation for CSRF.
+- **SQL injection protection**: SQLAlchemy's parameterized queries throughout; no endpoint constructs SQL from string concatenation, including the filtering and sorting parameters in Section 5, which are mapped through an explicit allowlist of column names, never interpolated directly.
+
+---
+
+## 14. Background Processing APIs
+
+These endpoints expose Celery's state to clients without exposing Celery itself.
+
+- `GET /api/v1/tasks/{task_id}` — generic task status (`pending`, `started`, `success`, `failure`), used internally by the Workflow Execution polling endpoints rather than called directly by the frontend in most cases
+- Queue management and retry configuration are operational concerns, not exposed via the public API; they are configured through Celery's own configuration and monitored through Flower or an equivalent internal-only dashboard, not through `/api/v1/*`
+
+The distinction matters: `Workflow Executions` (Section 7) is the product-facing abstraction over background work, and `Tasks` (this section) is the low-level primitive underneath it. Keeping them as separate API surfaces means the platform could swap Celery for Temporal, as the Technical Architecture document's Future Evolution section anticipates, without changing a single frontend-facing endpoint.
+
+---
+
+## 15. API Documentation Strategy
+
+FastAPI generates an OpenAPI 3.1 schema automatically from the route definitions and Pydantic models, which is the primary source of truth rather than hand-written documentation that can drift from the implementation.
+
+- **Swagger UI** at `/api/docs`, enabled only in development and staging, disabled in production to avoid exposing the full schema and example payloads publicly before there is a public API product to justify it.
+- **Redoc** at `/api/redoc` for a more readable reference view, same environment restriction.
+- **SDK generation**: the OpenAPI schema is the input to auto-generated TypeScript types for the Next.js frontend (via `openapi-typescript` or equivalent), so the frontend's request and response types are mechanically derived from the backend contract rather than hand-maintained and prone to drifting out of sync.
+
+---
+
+## 16. Future API Evolution
+
+- **GraphQL**: not planned for Version 1 or 2. The API's read patterns are shallow enough (a campaign, its content, its status) that REST's over-fetching cost is low; GraphQL would add real complexity for a benefit that does not exist yet. Revisit only if a future analytics or reporting surface needs deep, client-specified nested queries.
+- **Streaming APIs**: the WebSocket endpoint in Section 7 is the first streaming surface. If agent output itself needs to stream token-by-token to the frontend, for perceived latency, that is a Version 2 conversation, since Version 1's Validator gate means partial, unvalidated content should not reach the user regardless.
+- **WebSockets**: already present for workflow status (Section 7); expansion to a general-purpose event bus is a natural Version 2 step once there is more than one kind of real-time event worth pushing.
+- **Public API**: the versioning strategy in Section 4 and the webhook shapes stubbed in Section 10 are deliberately designed now so that exposing `/api/v1/*` (or a dedicated `/api/public/v1/*`) to third-party developers later is additive, not a rewrite. This is the natural on-ramp for the Vision document's Phase 2 and Phase 3 expansion into other operational verticals: an external system integrating with Sales Ops or Finance Ops workflows would consume the same architecture through a public-facing version of this same API.
+- **Marketplace API and Plugin APIs**: explicitly out of scope until the platform has moved from the fixed DAG described in the Technical Architecture document to the dynamic, MCP-based tool discovery its own Future Evolution section describes. Designing a plugin API against a fixed-DAG backend would mean redesigning it again the moment MCP adoption happens, so this is intentionally deferred rather than built early.
